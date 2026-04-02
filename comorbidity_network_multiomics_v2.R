@@ -625,7 +625,7 @@ p_phi_mat  <- plot_cooccurrence_heatmap(omics$labels)
 ## 5e. Render (use pdf() / png() in batch, or just print() interactively)
 cat("  Rendering plots...\n")
 
-pdf("comorbidity_multiomics_results.pdf", width = 12, height = 8, useDingbats = FALSE)
+pdf("~/Documents/Jobs_2026/UCL/res_v2/comorbidity_multiomics_results.pdf", width = 12, height = 8, useDingbats = FALSE)
 
 print(p_network)
 print(p_phi_mat)
@@ -1257,13 +1257,14 @@ compute_gcn_saliency <- function(gcn_model,
 
   results <- lapply(diseases_to_explain, function(dis) {
 
-    d_col <- which(d_names == dis)
+    d_col    <- which(d_names == dis)
+    base_val <- unname(base_prob[d_col])
 
     saliency_vals <- vapply(seq_len(n_feat), function(j) {
       X_perturb        <- X_orig
       X_perturb[idx, j] <- 0          # ablate feature j for subject i
       cache_p <- gcn_forward(A_hat, X_perturb, params, 0, training = FALSE)
-      abs(cache_p$Y_hat[idx, d_col] - base_prob[d_col])
+      abs(cache_p$Y_hat[idx, d_col] - base_val)
     }, numeric(1))
 
     sal_df <- data.frame(
@@ -1274,7 +1275,7 @@ compute_gcn_saliency <- function(gcn_model,
         grepl("^GENE_", f_names) ~ "Transcriptomics",
         TRUE                     ~ "Proteomics"
       ),
-      baseline_risk = round(base_prob[d_col], 4),
+      baseline_risk = round(base_val, 4),
       disease  = dis,
       stringsAsFactors = FALSE
     )
@@ -1283,7 +1284,7 @@ compute_gcn_saliency <- function(gcn_model,
   })
 
   names(results) <- diseases_to_explain
-  if (length(results) == 1) results[[1]] else results
+  results
 }
 
 
@@ -1384,8 +1385,8 @@ plot_patient_graph <- function(gcn_model,
   # Edges
   # Convert vertex names to integer row positions in layout_mat as a
   # belt-and-braces guard: match() is safe whether vertices are named or not.
-  edge_list  <- as_data_frame(g_sub, what = "edges")
-  vnames     <- rownames(layout_mat)          # vertex name -> row index map
+  edge_list  <- igraph::as_data_frame(g_sub, what = "edges")
+  vnames     <- V(g_sub)$name
   from_idx   <- match(edge_list$from, vnames)
   to_idx     <- match(edge_list$to,   vnames)
   edge_df    <- data.frame(
@@ -1459,8 +1460,7 @@ plot_gnn_saliency_individual <- function(gcn_model,
                                          disease,
                                          top_n = 20) {
 
-  sal <- compute_gcn_saliency(gcn_model, subject_id, disease, n_top = top_n)
-  if (is.list(sal)) sal <- sal[[disease]]   # handle list return
+  sal <- compute_gcn_saliency(gcn_model, subject_id, disease, n_top = top_n)[[disease]]
 
   sal$feature <- factor(sal$feature, levels = rev(sal$feature))
 
@@ -1647,8 +1647,7 @@ plot_saliency_heatmap_subjects <- function(gcn_model,
 
   # Compute saliency for each subject
   all_sal <- lapply(subject_ids, function(sid) {
-    sal <- compute_gcn_saliency(gcn_model, sid, disease, n_top = top_n)
-    if (is.list(sal)) sal <- sal[[disease]]
+    sal <- compute_gcn_saliency(gcn_model, sid, disease, n_top = top_n)[[disease]]
     sal$subject_id <- sid
     sal
   })
@@ -1687,7 +1686,7 @@ plot_saliency_heatmap_subjects <- function(gcn_model,
     facet_grid(layer ~ ., scales = "free_y", space = "free_y") +
     labs(
       title    = paste("Per-Subject GCN Saliency –", disease),
-      subtitle = "Rows = subjects  |  Columns = features  |  scaled per subject",
+      subtitle = "Rows = features  |  Columns = subjects  |  scaled per subject",
       x        = "Subject ID", y = NULL
     ) +
     theme_minimal(base_size = 9) +
@@ -1850,7 +1849,7 @@ p_sal_heatmap <- plot_saliency_heatmap_subjects(
 )
 
 ## 9e. Write GCN plots to PDF
-pdf("comorbidity_multiomics_GCN.pdf", width = 12, height = 8, useDingbats = FALSE)
+pdf("~/Documents/Jobs_2026/UCL/res_v2/comorbidity_multiomics_GCN.pdf", width = 12, height = 8, useDingbats = FALSE)
 
 print(p_train_curve)
 print(p_patient_net)
