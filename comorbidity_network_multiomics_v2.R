@@ -1367,6 +1367,9 @@ plot_patient_graph <- function(gcn_model,
 
   # Layout
   layout_mat <- layout_with_fr(g_sub, niter = 500)
+  # layout_with_fr() returns a plain matrix with no rownames.
+  # Assign vertex names so character indexing via edge_list$from/to works.
+  rownames(layout_mat) <- V(g_sub)$name
 
   node_df <- data.frame(
     subject_id   = sids,
@@ -1379,12 +1382,17 @@ plot_patient_graph <- function(gcn_model,
   )
 
   # Edges
+  # Convert vertex names to integer row positions in layout_mat as a
+  # belt-and-braces guard: match() is safe whether vertices are named or not.
   edge_list  <- as_data_frame(g_sub, what = "edges")
+  vnames     <- rownames(layout_mat)          # vertex name -> row index map
+  from_idx   <- match(edge_list$from, vnames)
+  to_idx     <- match(edge_list$to,   vnames)
   edge_df    <- data.frame(
-    x    = layout_mat[edge_list$from, 1],
-    y    = layout_mat[edge_list$from, 2],
-    xend = layout_mat[edge_list$to,   1],
-    yend = layout_mat[edge_list$to,   2]
+    x    = layout_mat[from_idx, 1],
+    y    = layout_mat[from_idx, 2],
+    xend = layout_mat[to_idx,   1],
+    yend = layout_mat[to_idx,   2]
   )
 
   p <- ggplot() +
