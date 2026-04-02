@@ -1144,6 +1144,13 @@ train_gcn <- function(
   # Final predictions (inference mode)
   final_cache <- gcn_forward(A_hat, X, params, 0, training = FALSE)
 
+  # gcn_forward returns Y_hat from raw matrix algebra which drops dimnames.
+  # Restore row (subject) and column (disease) names so that downstream
+  # column-name indexing (e.g. probs[, "Epilepsy"]) works correctly.
+  Y_hat_named <- final_cache$Y_hat
+  rownames(Y_hat_named) <- omics_list$subject_ids
+  colnames(Y_hat_named) <- colnames(Y)
+
   list(
     params        = params,
     A_hat         = A_hat,
@@ -1151,7 +1158,7 @@ train_gcn <- function(
     X             = X,
     X_raw         = X_raw,
     Y             = Y,
-    Y_hat         = final_cache$Y_hat,
+    Y_hat         = Y_hat_named,
     subject_ids   = omics_list$subject_ids,
     feature_names = c(feat_g, feat_t, feat_p),
     disease_names = colnames(Y),
@@ -1192,12 +1199,17 @@ predict_individual_risk_gcn <- function(gcn_model,
   probs  <- gcn_model$Y_hat[idx, , drop = FALSE]
   true_Y <- gcn_model$Y[idx, , drop = FALSE]
 
+  # Use integer column positions rather than string names as a
+  # belt-and-braces guard: matrix algebra can silently drop dimnames,
+  # and probs[, "Epilepsy"] throws 'no dimnames attribute' in that case.
   df <- data.frame(subject_id = subject_ids, stringsAsFactors = FALSE)
-  for (d in gcn_model$disease_names) {
-    df[[paste0("risk_", d)]] <- round(probs[, d], 4)
+  for (k in seq_along(gcn_model$disease_names)) {
+    d <- gcn_model$disease_names[k]
+    df[[paste0("risk_", d)]] <- round(probs[, k], 4)
   }
-  for (d in gcn_model$disease_names) {
-    df[[paste0("true_", d)]] <- true_Y[, d]
+  for (k in seq_along(gcn_model$disease_names)) {
+    d <- gcn_model$disease_names[k]
+    df[[paste0("true_", d)]] <- true_Y[, k]
   }
   df
 }
@@ -1236,8 +1248,10 @@ compute_gcn_saliency <- function(gcn_model,
   n_feat  <- length(f_names)
 
   # Baseline prediction
+  # gcn_forward drops dimnames; assign them so vector indexing by name is safe
   base_cache <- gcn_forward(A_hat, X_orig, params, 0, training = FALSE)
   base_prob  <- base_cache$Y_hat[idx, ]
+  names(base_prob) <- gcn_model$disease_names
 
   diseases_to_explain <- if (is.null(disease)) d_names else disease
 
@@ -1564,11 +1578,12 @@ plot_individual_risk_profile <- function(gcn_model, rf_models, subject_id) {
 plot_risk_landscape <- function(gcn_model) {
 
   d_names <- gcn_model$disease_names
-  rows <- do.call(rbind, lapply(d_names, function(d) {
+  rows <- do.call(rbind, lapply(seq_along(d_names), function(k) {
+    d <- d_names[k]
     data.frame(
       disease    = d,
-      risk       = gcn_model$Y_hat[, d],
-      true_label = factor(gcn_model$Y[, d], labels = c("Control", "Case")),
+      risk       = gcn_model$Y_hat[, k],
+      true_label = factor(gcn_model$Y[, k], labels = c("Control", "Case")),
       stringsAsFactors = FALSE
     )
   }))
