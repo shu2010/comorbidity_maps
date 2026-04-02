@@ -176,12 +176,14 @@ build_comorbidity_network <- function(omics_list, phi_thresh = 0.05) {
     for (j in (i + 1):n_dis) {
       tbl <- table(labels[[i]], labels[[j]])
       if (all(dim(tbl) == c(2, 2))) {
-        n11 <- tbl[2, 2]; n10 <- tbl[2, 1]
-        n01 <- tbl[1, 2]; n00 <- tbl[1, 1]
-        n   <- sum(tbl)
+        # Coerce to numeric immediately: table() returns integers, and
+        # products like n11*n00 with n~600 exceed .Machine$integer.max
+        # (~2.1e9), producing NA and breaking the denom > 0 guard.
+        n11 <- as.numeric(tbl[2, 2]); n10 <- as.numeric(tbl[2, 1])
+        n01 <- as.numeric(tbl[1, 2]); n00 <- as.numeric(tbl[1, 1])
         denom <- sqrt((n11 + n10) * (n01 + n00) *
                         (n11 + n01) * (n10 + n00))
-        phi   <- if (denom > 0) (n11 * n00 - n10 * n01) / denom else 0
+        phi   <- if (is.finite(denom) && denom > 0) (n11 * n00 - n10 * n01) / denom else 0
       } else { phi <- 0 }
       phi_matrix[i, j] <- phi_matrix[j, i] <- abs(phi)
     }
@@ -537,8 +539,10 @@ plot_cooccurrence_heatmap <- function(labels) {
       tbl  <- table(labels[[i]], labels[[j]])
       if (all(dim(tbl) == c(2, 2))) {
         chisq_val <- chisq.test(tbl, correct = FALSE)$statistic
-        phi       <- sqrt(chisq_val / sum(tbl)) * sign(
-          tbl[2,2] * tbl[1,1] - tbl[2,1] * tbl[1,2])
+        # Coerce to numeric before multiplication to prevent integer overflow
+        phi <- sqrt(chisq_val / sum(tbl)) * sign(
+          as.numeric(tbl[2,2]) * as.numeric(tbl[1,1]) -
+          as.numeric(tbl[2,1]) * as.numeric(tbl[1,2]))
       } else { phi <- 0 }
       phi_mat[i, j] <- phi_mat[j, i] <- round(phi, 4)
     }
